@@ -92,29 +92,3 @@ end
 function getXmlFileFromPath(path)
     return (fileExists(path) and xmlLoadFile(path, "root")) or (xmlCreateFile(path,  "root"))
 end
---> file functions
-function writeTextToFile(path, text, startAt)
-    local file = getFileHandleFromPath(path)
-    if (file) then
-        fileSetPos(file, startAt or 0)
-        fileWrite(file, text)
-        fileFlush(file)
-        fileClose(file)
-    end
-    return false
-end
-
-function readTextFromFile(path, text, startAt)
-    local file = getFileHandleFromPath(path)
-    if (file) then
-        local str = fileRead(file, fileGetSize(file))
-        fileClose(file)
-        return str
-    end
-    return false
-end
-
-
-function getFileHandleFromPath(path, readOnly)
-    return (fileExists(path) and fileOpen(path, readOnly)) or (fileCreate(path))
-end
