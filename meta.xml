@@ -1,0 +1,6 @@
+<meta>
+    <script src="g.lua" type="shared" />
+ 
+    <export function="writeTableToXml" type="shared" />
+    <export function="getTableFromXml" type="shared" />
+</meta>
