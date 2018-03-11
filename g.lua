@@ -1,10 +1,31 @@
-xmlFindChild = function(parentNode, childName)
+local function xmlFindChild(parentNode, childName)
     for _, childNode in pairs(xmlNodeGetChildren(parentNode)) do
         if (xmlNodeGetName(childNode)==childName) then
             return childNode
         end
     end
     return false
+end
+
+local function getXmlFileFromPath(path)
+    return (fileExists(path) and xmlLoadFile(path, "root")) or (xmlCreateFile(path,  "root"))
+end
+
+local function writeTableToXmlRecursive(parentNode, table)
+    for i, v in pairs(table) do
+        --> If the value isnt a table
+        local node = xmlCreateChild(parentNode, (type(i)=="number" and "__numIndex__") or (i))
+        if (type(i)=="number") then
+            xmlNodeSetAttribute(node, "index", i)  
+        end
+        if not (type(v)=="table") then      
+            xmlNodeSetValue(node, tostring(v))
+            xmlNodeSetAttribute(node, "valueType", type(v))
+        else
+            writeTableToXmlRecursive(node, v)
+        end
+    end
+    return true
 end
 
 
@@ -38,21 +59,22 @@ function writeTableToXml(path, rootNodeName, table)--> the caller funcion
     return false
 end
 
-function writeTableToXmlRecursive(parentNode, table)
-    for i, v in pairs(table) do
-        --> If the value isnt a table
-        local node = xmlCreateChild(parentNode, (type(i)=="number" and "__numIndex__") or (i))
-        if (type(i)=="number") then
-            xmlNodeSetAttribute(node, "index", i)  
+
+local function getTableFromXmlRecursive(parentNode)
+    local tbl = {}
+    for _, node in pairs(xmlNodeGetChildren(parentNode)) do
+        local nName = xmlNodeGetName(node)
+        local nValue = xmlNodeGetValue(node)
+        local nValueType = xmlNodeGetAttribute(node, "valueType") or "table"
+        nValue = ((nValueType=="table" or nValueType=="") and getTableFromXmlRecursive(node)) or nValue
+        if (nValueType=="number") then
+            nValue = tonumber(nValue)
+        elseif (nValueType=="boolean") then
+            nValue = nValue=="true"
         end
-        if not (type(v)=="table") then      
-            xmlNodeSetValue(node, tostring(v))
-            xmlNodeSetAttribute(node, "valueType", type(v))
-        else
-            writeTableToXmlRecursive(node, v)
-        end
+        tbl[((nName=="__numIndex__") and tonumber(xmlNodeGetAttribute(node, "index"))) or nName] = nValue
     end
-    return true
+    return tbl
 end
 
 function getTableFromXml(path, rootNodeName) 
@@ -77,23 +99,3 @@ function getTableFromXml(path, rootNodeName)
     end
 end
 
-function getTableFromXmlRecursive(parentNode)
-    local tbl = {}
-    for _, node in pairs(xmlNodeGetChildren(parentNode)) do
-        local nName = xmlNodeGetName(node)
-        local nValue = xmlNodeGetValue(node)
-        local nValueType = xmlNodeGetAttribute(node, "valueType") or "table"
-        nValue = ((nValueType=="table" or nValueType=="") and getTableFromXmlRecursive(node)) or nValue
-        if (nValueType=="number") then
-            nValue = tonumber(nValue)
-        elseif (nValueType=="boolean") then
-            nValue = nValue=="true"
-        end
-        tbl[((nName=="__numIndex__") and tonumber(xmlNodeGetAttribute(node, "index"))) or nName] = nValue
-    end
-    return tbl
-end
-
-function getXmlFileFromPath(path)
-    return (fileExists(path) and xmlLoadFile(path, "root")) or (xmlCreateFile(path,  "root"))
-end
