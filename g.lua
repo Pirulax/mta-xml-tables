@@ -1,50 +1,67 @@
-
---> xml functions
-function writeXmlFromTable(path, rootNode, table, rootNodeIndex)--> the caller funcion
-    local xmlFile = getXmlFileFromPath(path)
-    if (xmlFile) then
-        rootNodeIndex = rootNodeIndex or 0
-        --> because the node already exists it will add the childrens to this node again with the same name, and we will have a corrupted table later, so
-        --> We destroy it, and then recreate it.
-        xmlDestroyNode(xmlFindChild(xmlFile, rootNode, rootNodeIndex))       
-        local result = writeXMLFromTableRecursive(xmlCreateChild(xmlFile, rootNode), table)
-        xmlSaveFile(xmlFile)
-        xmlUnloadFile(xmlFile)
-        return result
-    else
-        return result, "Failed to read/create "..path
-    end
-end
-
-function writeXMLFromTableRecursive(parentNode, table)
-    local numberedIndexStr = ""
-    for i, v in pairs(table) do
-        --> loop thru the table
-        --> create a new attribute at the index if its not a table
-        if not (type(v)=="table") then
-            --> if the index is a number, then we will save the key-value pair to the numberedIndexStr string.
-            if (type(i)=="number") then
-                numberedIndexStr = numberedIndexStr..string.format("%i:%s;", i, v)
-            else
-                xmlNodeSetAttribute(parentNode, i, tostring(v))
-            end
-        else--> if its a table then we use recursivity and call this funcion again, and create a new node for the table index.   
-            writeXMLFromTableRecursive(xmlCreateChild(parentNode,  i), v)
+xmlFindChild = function(parentNode, childName)
+    for _, childNode in pairs(xmlNodeGetChildren(parentNode)) do
+        if (xmlNodeGetName(childNode)==childName) then
+            return childNode
         end
     end
-    if (#numberedIndexStr>0) then--> Only then create the node if the numberedIndexStrs lenght is more than 0.
-        xmlNodeSetAttribute(parentNode,  "numberedIndex", string.sub(numberedIndexStr, 0, #numberedIndexStr-1))--> Because we'll have an unused ';' at the end of the string, which is 2char wide.
+    return false
+end
+
+
+function writeTableToXml(path, rootNodeName, table)--> the caller funcion
+    assert(type(path)=="string",     "Expected string at argument 1 @ writeTableToXml[Got "..type(path).."]"    )
+    assert(type(table)=="table",     "Expected table at argument 2 @ writeTableToXml[Got "..type(table).."]"    )
+    assert(type(rootNodeName)=="string", "Expected string at argument 3 @ writeTableToXml[Got "..type(rootNode).."]")
+    local xmlFile = getXmlFileFromPath(path)
+    if (xmlFile) then
+        rootNodeIndex = rootNodeIndex or "0"
+        --> because the node already exists it will add the childrens to this node again with the same name, and we will have a corrupted table later, so
+        --> We destroy it, and then recreate it.
+        local node = findNode(xmlFile, rootNodeName)
+        if (node) then
+            local pNode = xmlFile
+            local pName = rootNodeName
+            if (node) then
+                pNode = xmlNodeGetParent(node)
+                pName = xmlNodeGetName(node)
+                xmlDestroyNode(node)   
+            end
+            local result = writeTableToXmlRecursive(xmlCreateChild(pNode, pName), table)
+            xmlSaveFile(xmlFile)
+            xmlUnloadFile(xmlFile)
+            return result
+        else
+            print("Failed to find/recreate the node.")
+            return false
+        end
+    end
+    return false
+end
+
+function writeTableToXmlRecursive(parentNode, table)
+    for i, v in pairs(table) do
+        --> If the value isnt a table
+        local node = xmlCreateChild(parentNode, (type(i)=="number" and "__numIndex__") or (i))
+        if (type(i)=="number") then
+            xmlNodeSetAttribute(node, "index", i)  
+        end
+        if not (type(v)=="table") then      
+            xmlNodeSetValue(node, tostring(v))
+            xmlNodeSetAttribute(node, "valueType", type(v))
+        else
+            writeTableToXmlRecursive(node, v)
+        end
     end
     return true
 end
 
-function getTableFromXml(path, rootNode, rootNodeIndex) 
+function getTableFromXml(path, rootNodeName) 
     rootNodeIndex = rootNodeIndex or 0
     local xmlFile = getXmlFileFromPath(path)
     if (xmlFile) then    
-        local node = xmlFindChild(xmlFile, rootNode, rootNodeIndex)
+        local node = findNode(xmlFile, rootNodeName)
         if (node) then
-            local tbl = loadTableFromXmlRecursive(node)
+            local tbl = getTableFromXmlRecursive(node)
             xmlSaveFile(xmlFile)
             xmlUnloadFile(xmlFile)
             if (tbl) then         
@@ -60,34 +77,22 @@ function getTableFromXml(path, rootNode, rootNodeIndex)
     end
 end
 
-function loadTableFromXmlRecursive(parentNode)
-    --> we create an empty table
+function getTableFromXmlRecursive(parentNode)
     local tbl = {}
-    --> get the atts of it, and loop thru them.
-    for attName, attValue in pairs(xmlNodeGetAttributes(parentNode)) do
-        --> If its not the numberedIndex att. then we just add the key-value pair to the table.
-        if not (attName=="numberedIndex") then
-            if (attValue:find("(true)")) or (attValue:find("(false)")) then
-                tbl[attName] = attValue=="true"
-            elseif (tonumber(attValue)) then
-                tbl[attName] = tonumber(attValue)
-            else
-                tbl[attName] = attValue
-            end
-        else--> If its the numberedIndex att then we add the indexes to the table.
-            for _, keyValuePair in pairs(split(attValue, ";")) do
-                --> the first gettok is the key, the second is the value.
-                tbl[gettok(keyValuePair, 1, ":")] = gettok(keyValuePair, 2, ":")
-            end
-        end
-    end
-    --> and the childrens, and loop thru them,
     for _, node in pairs(xmlNodeGetChildren(parentNode)) do
-        tbl[xmlNodeGetName(node)] = loadTableFromXmlRecursive(node)
+        local nName = xmlNodeGetName(node)
+        local nValue = xmlNodeGetValue(node)
+        local nValueType = xmlNodeGetAttribute(node, "valueType") or "table"
+        nValue = ((nValueType=="table" or nValueType=="") and getTableFromXmlRecursive(node)) or nValue
+        if (nValueType=="number") then
+            nValue = tonumber(nValue)
+        elseif (nValueType=="boolean") then
+            nValue = nValue=="true"
+        end
+        tbl[((nName=="__numIndex__") and tonumber(xmlNodeGetAttribute(node, "index"))) or nName] = nValue
     end
     return tbl
 end
-
 
 function getXmlFileFromPath(path)
     return (fileExists(path) and xmlLoadFile(path, "root")) or (xmlCreateFile(path,  "root"))
